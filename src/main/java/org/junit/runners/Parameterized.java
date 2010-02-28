@@ -6,8 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.runner.Runner;
 import org.junit.runner.notification.RunNotifier;
@@ -70,43 +73,31 @@ public class Parameterized extends Suite {
 
 	private class TestClassRunnerForParameters extends
 			BlockJUnit4ClassRunner {
-		private final int fParameterSetNumber;
 
-		private final List<Object[]> fParameterList;
+		private final Object[] fParameters;
+		private final String fTestName;
 
 		TestClassRunnerForParameters(Class<?> type,
-				List<Object[]> parameterList, int i) throws InitializationError {
+				Object[] parameters, String testName) throws InitializationError {
 			super(type);
-			fParameterList= parameterList;
-			fParameterSetNumber= i;
+			fParameters= parameters;
+			fTestName= testName;
 		}
 
 		@Override
 		public Object createTest() throws Exception {
-			return getTestClass().getOnlyConstructor().newInstance(
-					computeParams());
+			return getTestClass().getOnlyConstructor().newInstance(fParameters);
 		}
 
-		private Object[] computeParams() throws Exception {
-			try {
-				return fParameterList.get(fParameterSetNumber);
-			} catch (ClassCastException e) {
-				throw new Exception(String.format(
-						"%s.%s() must return a Collection of arrays.",
-						getTestClass().getName(), getParametersMethod(
-								getTestClass()).getName()));
-			}
-		}
 
 		@Override
 		protected String getName() {
-			return String.format("[%s]", fParameterSetNumber);
+			return String.format("[%s]", fTestName);
 		}
 
 		@Override
 		protected String testName(final FrameworkMethod method) {
-			return String.format("%s[%s]", method.getName(),
-					fParameterSetNumber);
+			return String.format("%s[%s]", method.getName(), fTestName);
 		}
 
 		@Override
@@ -127,10 +118,11 @@ public class Parameterized extends Suite {
 	 */
 	public Parameterized(Class<?> klass) throws Throwable {
 		super(klass, Collections.<Runner>emptyList());
-		List<Object[]> parametersList= getParametersList(getTestClass());
-		for (int i= 0; i < parametersList.size(); i++)
+		Map<String, Object[]> parametersList= getNamedParameters(getTestClass());
+		for (Map.Entry<String, Object[]> entry : parametersList.entrySet()) {
 			runners.add(new TestClassRunnerForParameters(getTestClass().getJavaClass(),
-					parametersList, i));
+					entry.getValue(), entry.getKey()));
+		}
 	}
 
 	@Override
@@ -139,11 +131,30 @@ public class Parameterized extends Suite {
 	}
 
 	@SuppressWarnings("unchecked")
-	private List<Object[]> getParametersList(TestClass klass)
-			throws Throwable {
-		return (List<Object[]>) getParametersMethod(klass).invokeExplosively(
-				null);
+	private Map<String, Object[]> getNamedParameters(TestClass klass) throws Throwable{
+		Map<String, Object[]> map = new LinkedHashMap<String, Object[]>();
+		Object parameters= getParametersMethod(klass).invokeExplosively(null);
+		//if parameters is a map then we assume the user has given us named params.
+	 
+		try{
+			if(parameters instanceof Map<?,?>){
+				return (Map<String, Object[]>) parameters;
+			}
+			Collection<Object[]> parameterList = (Collection<Object[]>) parameters;
+			int i = 0;
+			for (Object[] objArray : parameterList) {
+				map.put(i+"", objArray);
+				i++;
+			}
+		}catch (ClassCastException e) {
+			throw new Exception(String.format(
+					"%s.%s() must have a return type of Collection<Object[]> or Map<String, Object[]>.",
+					getTestClass().getName(), getParametersMethod(getTestClass()).getName()));
+		}
+		
+		return map;
 	}
+
 
 	private FrameworkMethod getParametersMethod(TestClass testClass)
 			throws Exception {

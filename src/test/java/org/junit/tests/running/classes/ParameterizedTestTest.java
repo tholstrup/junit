@@ -187,7 +187,7 @@ public class ParameterizedTestTest {
 	@Test
 	public void meaningfulFailureWhenParameterListsAreNotArrays() {
 		String expected= String.format(
-				"%s.data() must return a Collection of arrays.",
+				"%s.data() must have a return type of Collection<Object[]> or Map<String, Object[]>.",
 				WrongElementType.class.getName());
 		assertThat(testResult(WrongElementType.class).toString(),
 				containsString(expected));
